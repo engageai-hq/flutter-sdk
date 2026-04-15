@@ -109,6 +109,7 @@ class EngageVoiceService {
         filename: filename,
       ));
       request.fields['language'] = config.language;
+      _headers.forEach((k, v) => request.headers[k] = v);
 
       final streamedResponse = await _httpClient.send(request)
           .timeout(Duration(seconds: config.timeoutSeconds));
