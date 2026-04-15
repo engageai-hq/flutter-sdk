@@ -14,6 +14,11 @@ class EngageStreamingService {
 
   String get _baseUrl => config.serverUrl.replaceAll(RegExp(r'/$'), '');
 
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        if (config.apiKey != null) 'X-EngageAI-Key': config.apiKey!,
+      };
+
   /// Send a message and receive a stream of text deltas.
   ///
   /// Yields [StreamEvent] objects as they arrive from the server.
@@ -34,7 +39,7 @@ class EngageStreamingService {
         'POST',
         Uri.parse('$_baseUrl/api/v1/chat/stream'),
       );
-      request.headers['Content-Type'] = 'application/json';
+      _headers.forEach((k, v) => request.headers[k] = v);
       request.body = body;
 
       final response = await _httpClient.send(request);

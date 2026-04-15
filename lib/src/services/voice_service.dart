@@ -32,6 +32,11 @@ class EngageVoiceService {
 
   String get _baseUrl => config.serverUrl.replaceAll(RegExp(r'/$'), '');
 
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        if (config.apiKey != null) 'X-EngageAI-Key': config.apiKey!,
+      };
+
   /// Send recorded audio to the backend for full voice chat processing.
   Future<VoiceChatResult> processVoiceChat({
     required Uint8List audioBytes,
@@ -44,7 +49,7 @@ class EngageVoiceService {
 
       final response = await _httpClient.post(
         Uri.parse('$_baseUrl/api/v1/voice/chat'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _headers,
         body: jsonEncode({
           'session_id': sessionId,
           'app_id': config.appId,
@@ -126,7 +131,7 @@ class EngageVoiceService {
     try {
       final response = await _httpClient.post(
         Uri.parse('$_baseUrl/api/v1/voice/synthesize'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _headers,
         body: jsonEncode({
           'text': text,
           'voice': voiceOverride ?? voice,
