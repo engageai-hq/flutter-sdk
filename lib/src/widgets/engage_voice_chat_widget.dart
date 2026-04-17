@@ -435,6 +435,8 @@ class _State extends State<EngageAIVoiceChatWidget> {
                     emotion: _characterEmotion,
                     config: widget.characterConfig,
                     isSpeaking: _isSpeaking,
+                    characterUrl: widget.engageAI.characterUrl,
+                    apiKey: widget.engageAI.config.apiKey,
                   ),
                 ),
               ),

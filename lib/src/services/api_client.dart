@@ -20,11 +20,16 @@ class EngageAIApiClient {
       };
 
   /// Register the app manifest with the server.
-  Future<bool> registerManifest(Map<String, dynamic> manifest) async {
+  /// Throws [StateError] on failure.
+  /// Returns the custom character URL for enterprise plans, or null for default character.
+  Future<String?> registerManifest(Map<String, dynamic> manifest) async {
     final response = await _post('/api/v1/register', {
       'manifest': manifest,
     });
-    return response['success'] == true;
+    if (response['success'] != true) {
+      throw StateError('Failed to register manifest with EngageAI server');
+    }
+    return response['character_url'] as String?;
   }
 
   /// Send a chat message and get the agent's response.

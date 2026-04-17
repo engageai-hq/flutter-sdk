@@ -6,12 +6,16 @@ class EngageCharacterFab extends StatefulWidget {
   final VoidCallback onTap;
   final Color primaryColor;
   final double size;
+  final String? characterUrl;
+  final String? apiKey;
 
   const EngageCharacterFab({
     super.key,
     required this.onTap,
     this.primaryColor = const Color(0xFF4F6AFF),
     this.size = 90,
+    this.characterUrl,
+    this.apiKey,
   });
 
   @override
@@ -73,15 +77,15 @@ class _FabState extends State<EngageCharacterFab>
             ),
             child: ClipOval(
               child: OverflowBox(
-                maxWidth: s * 1.2,
-                maxHeight: s * 1.2,
-                child: Align(
-                  alignment: const Alignment(0, 0.3),
-                  child: EngageCharacterWidget(
-                    state: CharacterState.idle,
-                    emotion: CharacterEmotion.happy,
-                    config: CharacterConfig(size: s * 1.2, showShadow: false),
-                  ),
+                alignment: const Alignment(-.1, -0.8),
+                maxWidth: s * 2.8,
+                maxHeight: s * 2.8,
+                child: EngageCharacterWidget(
+                  state: CharacterState.idle,
+                  emotion: CharacterEmotion.happy,
+                  config: CharacterConfig(size: s * 2.8, showShadow: false),
+                  characterUrl: widget.characterUrl,
+                  apiKey: widget.apiKey,
                 ),
               ),
             ),

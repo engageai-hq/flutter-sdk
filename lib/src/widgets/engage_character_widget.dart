@@ -1,4 +1,6 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:rive/rive.dart';
 import '../models/character_model.dart';
 
@@ -9,6 +11,16 @@ class EngageCharacterWidget extends StatefulWidget {
   final bool isSpeaking;
   final List<Viseme> visemes;
 
+  /// URL of the character Rive file, served by the EngageAI backend.
+  /// Returned from initialize() — always set for every developer.
+  /// Enterprise customers get their custom character URL; others get the default.
+  /// Set internally by the SDK — not a developer-facing parameter.
+  final String? characterUrl;
+
+  /// API key used to authenticate the character file download.
+  /// Passed through internally — never set by developer code.
+  final String? apiKey;
+
   const EngageCharacterWidget({
     super.key,
     this.state = CharacterState.idle,
@@ -16,6 +28,8 @@ class EngageCharacterWidget extends StatefulWidget {
     this.config = const CharacterConfig(),
     this.isSpeaking = false,
     this.visemes = const [],
+    this.characterUrl,
+    this.apiKey,
   });
 
   @override
@@ -29,6 +43,10 @@ class _EngageCharacterWidgetState extends State<EngageCharacterWidget> {
   bool _loading = true;
   String? _loadError;
 
+  // In-memory cache keyed by URL — shared across all widget instances.
+  // Prevents re-downloading the character file on every widget rebuild.
+  static final Map<String, List<int>> _cache = {};
+
   static const _assetPath = 'assets/character/character.riv';
 
   @override
@@ -39,7 +57,34 @@ class _EngageCharacterWidgetState extends State<EngageCharacterWidget> {
 
   Future<void> _loadRive() async {
     try {
-      final file = await File.asset(_assetPath, riveFactory: Factory.rive);
+      final File? file;
+
+      if (widget.characterUrl != null) {
+        final url = widget.characterUrl!;
+
+        // Use cached bytes if available
+        List<int>? bytes = _cache[url];
+
+        if (bytes == null) {
+          final headers = <String, String>{};
+          if (widget.apiKey != null) headers['X-EngageAI-Key'] = widget.apiKey!;
+
+          final response = await http.get(Uri.parse(url), headers: headers);
+          if (response.statusCode != 200) throw Exception('Character fetch failed (${response.statusCode})');
+
+          bytes = response.bodyBytes;
+          _cache[url] = bytes; // cache for this session
+        }
+
+        file = await File.decode(
+          Uint8List.fromList(bytes),
+          riveFactory: Factory.rive,
+        );
+      } else {
+        // Fallback — local bundle (used in offline/dev scenarios only)
+        file = await File.asset(_assetPath, riveFactory: Factory.rive);
+      }
+
       if (file == null) throw Exception('Rive file is null');
 
       final controller = RiveWidgetController(file);

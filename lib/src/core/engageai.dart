@@ -43,6 +43,10 @@ class EngageAI {
   EngageUserContext? _userContext;
   bool _initialized = false;
 
+  /// Custom character URL returned by the server for enterprise plans.
+  /// null means use the default bundled character.
+  String? _characterUrl;
+
   /// Callback fired when the agent responds with a message.
   void Function(AgentAction action)? onAgentAction;
 
@@ -61,6 +65,10 @@ class EngageAI {
 
   /// Current session ID.
   String get sessionId => _sessionId;
+
+  /// Custom character URL from the server (enterprise plan only).
+  /// null means use the default bundled character.
+  String? get characterUrl => _characterUrl;
 
   /// Current message history.
   List<ChatMessage> get messages => List.unmodifiable(_messages);
@@ -102,11 +110,8 @@ class EngageAI {
       functions: _functions.values.map((fn) => fn.toManifestJson()).toList(),
     );
 
-    final success = await _apiClient.registerManifest(manifest.toJson());
-    if (!success) {
-      throw StateError('Failed to register manifest with EngageAI server');
-    }
-
+    // registerManifest throws on failure; returns null for non-enterprise (default character)
+    _characterUrl = await _apiClient.registerManifest(manifest.toJson());
     _initialized = true;
     if (config.debug) {
       print('[EngageAI] Initialized with ${_functions.length} functions');
