@@ -12,7 +12,7 @@ class EngageCharacterFab extends StatefulWidget {
   const EngageCharacterFab({
     super.key,
     required this.onTap,
-    this.primaryColor = const Color(0xFF4F6AFF),
+    this.primaryColor = const Color(0xFF1D4ED7),
     this.size = 90,
     this.characterUrl,
     this.apiKey,
