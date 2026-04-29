@@ -1,0 +1,40 @@
+name: engageai_sdk
+description: >
+  EngageAI SDK — Add AI-powered voice and text interaction to any Flutter app.
+  Let users control your app through natural language.
+version: 0.2.0
+homepage: https://engageai.tech
+repository: https://github.com/engageai-hq/flutter-sdk
+issue_tracker: https://github.com/engageai-hq/flutter-sdk/issues
+documentation: https://dashboard.engageai.tech/docs
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+  flutter: ">=3.16.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  web_socket_channel: ^3.0.0
+  json_annotation: ^4.9.0
+  uuid: ^4.3.0
+  provider: ^6.1.0
+  record: ^6.0.0
+  just_audio: ^0.9.40
+  path_provider: ^2.1.0
+  rive: ^0.14.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  json_serializable: ^6.8.0
+  build_runner: ^2.4.0
+
+# NOTE: The Rive character asset is shipped with the package source but
+# loaded primarily via URL from the EngageAI server (see
+# engage_character_widget.dart). The asset block is left empty intentionally
+# to avoid forcing consumer apps to bundle the .riv file. The SDK gracefully
+# falls back if the URL is unreachable.
+flutter:
