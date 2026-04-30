@@ -47,7 +47,11 @@ class _EngageCharacterWidgetState extends State<EngageCharacterWidget> {
   // Prevents re-downloading the character file on every widget rebuild.
   static final Map<String, List<int>> _cache = {};
 
-  static const _assetPath = 'assets/character/character.riv';
+  // Package-aware asset path: when the SDK is consumed as a Flutter package
+  // (via git URL or pub.dev), this path resolves to the SDK's own bundled
+  // asset, not the consumer app's asset bundle. The pubspec's `flutter:
+  // assets:` declaration ships the .riv file with every install.
+  static const _assetPath = 'packages/engageai_sdk/assets/character/character.riv';
 
   @override
   void initState() {
@@ -57,31 +61,46 @@ class _EngageCharacterWidgetState extends State<EngageCharacterWidget> {
 
   Future<void> _loadRive() async {
     try {
-      final File? file;
+      File? file;
 
+      // Try URL-based character first (for enterprise/branded customers).
+      // If URL fetch fails for any reason — network error, server down, bad
+      // response — gracefully fall back to the bundled default asset rather
+      // than crashing the whole widget.
       if (widget.characterUrl != null) {
-        final url = widget.characterUrl!;
+        try {
+          final url = widget.characterUrl!;
 
-        // Use cached bytes if available
-        List<int>? bytes = _cache[url];
+          // Use cached bytes if available
+          List<int>? bytes = _cache[url];
 
-        if (bytes == null) {
-          final headers = <String, String>{};
-          if (widget.apiKey != null) headers['X-EngageAI-Key'] = widget.apiKey!;
+          if (bytes == null) {
+            final headers = <String, String>{};
+            if (widget.apiKey != null) headers['X-EngageAI-Key'] = widget.apiKey!;
 
-          final response = await http.get(Uri.parse(url), headers: headers);
-          if (response.statusCode != 200) throw Exception('Character fetch failed (${response.statusCode})');
+            final response = await http.get(Uri.parse(url), headers: headers);
+            if (response.statusCode != 200) {
+              throw Exception('Character fetch failed (${response.statusCode})');
+            }
 
-          bytes = response.bodyBytes;
-          _cache[url] = bytes; // cache for this session
+            bytes = response.bodyBytes;
+            _cache[url] = bytes; // cache for this session
+          }
+
+          file = await File.decode(
+            Uint8List.fromList(bytes),
+            riveFactory: Factory.rive,
+          );
+        } catch (e) {
+          // URL load failed — log and fall through to bundled-asset path
+          debugPrint('[EngageAI] Character URL load failed, using bundled default: $e');
+          file = null;
         }
+      }
 
-        file = await File.decode(
-          Uint8List.fromList(bytes),
-          riveFactory: Factory.rive,
-        );
-      } else {
-        // Fallback — local bundle (used in offline/dev scenarios only)
+      // If no URL was provided, OR URL load failed, use the bundled asset.
+      // The asset is shipped with the SDK package and is always available.
+      if (file == null) {
         file = await File.asset(_assetPath, riveFactory: Factory.rive);
       }
 
