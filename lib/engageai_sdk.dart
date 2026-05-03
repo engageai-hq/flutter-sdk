@@ -8,6 +8,7 @@ export 'src/core/engageai.dart';
 export 'src/core/engageai_config.dart';
 
 // Models
+export 'src/models/annotations.dart';
 export 'src/models/app_function.dart';
 export 'src/models/agent_action.dart';
 export 'src/models/chat_message.dart';
