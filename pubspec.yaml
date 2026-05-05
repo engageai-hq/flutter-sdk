@@ -2,7 +2,7 @@ name: engageai_sdk
 description: >
   EngageAI SDK — Add AI-powered voice and text interaction to any Flutter app.
   Let users control your app through natural language.
-version: 0.2.1
+version: 0.2.2
 homepage: https://engageai.tech
 repository: https://github.com/engageai-hq/flutter-sdk
 issue_tracker: https://github.com/engageai-hq/flutter-sdk/issues
