@@ -137,26 +137,26 @@ class _EngageCharacterWidgetState extends State<EngageCharacterWidget> {
   }
 
   void _applyState(CharacterState state) {
-    // Reset all inputs first to guarantee a clean slate before activating
+    // Always clear both first — idle animation plays when both are false
     _setInput('isTalking', false);
     _setInput('isListening', false);
 
     switch (state) {
       case CharacterState.listening:
+        // User is speaking — activate listening
+        _setInput('isListening', true);
+      case CharacterState.talking:
+        // Model is speaking — activate talking
+        _setInput('isTalking', true);
       case CharacterState.thinking:
       case CharacterState.waitingConfirmation:
-        _setInput('isListening', true);
-
-      case CharacterState.talking:
-        _setInput('isTalking', true);
-
       case CharacterState.idle:
       case CharacterState.celebrating:
       case CharacterState.error:
+        // Both false → idle animation runs
         break;
     }
 
-    // Single repaint after all inputs are committed
     _riveController?.scheduleRepaint();
     debugPrint('[EngageAI] State: $state');
   }
