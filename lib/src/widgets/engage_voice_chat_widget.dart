@@ -77,7 +77,6 @@ class _State extends State<EngageAIVoiceChatWidget> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final existing = widget.engageAI.messages;
       if (existing.isNotEmpty) {
-        // Restore history when reopening the chat
         setState(() => _messages = existing);
         _scrollToBottom();
       } else {
@@ -104,7 +103,6 @@ class _State extends State<EngageAIVoiceChatWidget> {
   }
 
   Future<void> _interrupt() async {
-    await _audioService.stopHumming();
     if (_isSpeaking) {
       await _audioService.stopPlayback();
       setState(() {
@@ -125,14 +123,9 @@ class _State extends State<EngageAIVoiceChatWidget> {
       _characterEmotion = CharacterEmotion.thinking;
     });
 
-    _audioService.startHumming();
-
     try {
       final action = await widget.engageAI.sendMessage(text);
 
-      await _audioService.stopHumming();
-
-      // Fire TTS IMMEDIATELY — don't wait for setState
       Future<void>? ttsFuture;
       if (widget.voiceService != null &&
           action.message != null &&
@@ -141,7 +134,6 @@ class _State extends State<EngageAIVoiceChatWidget> {
         ttsFuture = _fetchAndPlayAudio(action.message!);
       }
 
-      // Show text
       setState(() {
         _isLoading = false;
         _messages = widget.engageAI.messages;
@@ -156,15 +148,12 @@ class _State extends State<EngageAIVoiceChatWidget> {
         });
       }
 
-      // Wait for TTS if it was started
       if (ttsFuture != null) {
         await ttsFuture;
       } else if (action.actionType != AgentActionType.confirm) {
         _fadeToIdle(seconds: 2);
       }
-
     } catch (e) {
-      await _audioService.stopHumming();
       setState(() {
         _isLoading = false;
         _messages = widget.engageAI.messages;
@@ -198,6 +187,7 @@ class _State extends State<EngageAIVoiceChatWidget> {
       _fadeToIdle();
     }
   }
+
   void _speakInBackground(String? text) async {
     if (text == null || text.isEmpty) {
       _fadeToIdle(seconds: 2);
@@ -257,18 +247,14 @@ class _State extends State<EngageAIVoiceChatWidget> {
       }
 
       if (widget.voiceService == null) {
-        setState(() { _characterState = CharacterState.idle; });
+        setState(() => _characterState = CharacterState.idle);
         return;
       }
 
-      // Start humming while transcribing
-      _audioService.startHumming();
       setState(() => _isLoading = true);
-
       final transcription = await widget.voiceService!.transcribeAudio(audioBytes);
 
       if (transcription.isEmpty) {
-        await _audioService.stopHumming();
         setState(() {
           _isLoading = false;
           _characterState = CharacterState.idle;
@@ -278,14 +264,9 @@ class _State extends State<EngageAIVoiceChatWidget> {
         return;
       }
 
-      // Stop humming before processMessage starts its own
-      await _audioService.stopHumming();
       setState(() => _isLoading = false);
-
       await _processMessage(transcription);
-
     } catch (e) {
-      await _audioService.stopHumming();
       setState(() {
         _isLoading = false;
         _characterState = CharacterState.error;
@@ -306,14 +287,10 @@ class _State extends State<EngageAIVoiceChatWidget> {
       _characterEmotion = CharacterEmotion.thinking;
     });
 
-    _audioService.startHumming();
-
     try {
       final action = confirmed
           ? await widget.engageAI.confirm()
           : await widget.engageAI.deny();
-
-      await _audioService.stopHumming();
 
       setState(() {
         _isLoading = false;
@@ -321,10 +298,8 @@ class _State extends State<EngageAIVoiceChatWidget> {
       });
       _scrollToBottom();
       _speakInBackground(action.message);
-
     } catch (e) {
-      await _audioService.stopHumming();
-      setState(() { _isLoading = false; });
+      setState(() => _isLoading = false);
       _showSnack('Error: $e');
       _fadeToIdle();
     }
@@ -385,8 +360,12 @@ class _State extends State<EngageAIVoiceChatWidget> {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [widget.primaryColor, widget.primaryColor.withOpacity(0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            widget.primaryColor,
+            widget.primaryColor.withValues(alpha: 0.85),
+          ],
         ),
       ),
       child: SafeArea(
@@ -394,31 +373,62 @@ class _State extends State<EngageAIVoiceChatWidget> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Row(
                 children: [
+                  // Branded back button
                   GestureDetector(
-                    onTap: () { _interrupt(); Navigator.of(context).maybePop(); },
-                    child: const Icon(Icons.arrow_back, color: Colors.white),
+                    onTap: () {
+                      _interrupt();
+                      Navigator.of(context).maybePop();
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_back_ios_new,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 12),
-                  Text(widget.title, style: const TextStyle(
-                      color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(
+                    widget.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const Spacer(),
+                  // Status chip
                   GestureDetector(
                     onTap: _isSpeaking ? _interrupt : null,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Container(width: 8, height: 8,
-                            decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+                        ),
                         const SizedBox(width: 6),
-                        Text(label, style: TextStyle(
-                            color: Colors.white.withOpacity(0.9), fontSize: 12)),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontSize: 12,
+                          ),
+                        ),
                       ]),
                     ),
                   ),
@@ -448,129 +458,193 @@ class _State extends State<EngageAIVoiceChatWidget> {
   }
 
   Widget _buildMessages() => Container(
-    color: const Color(0xFFF5F5F5),
-    child: ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.all(16),
-      itemCount: _messages.length,
-      itemBuilder: (_, i) => _bubble(_messages[i]),
-    ),
-  );
+        color: const Color(0xFFF5F5F5),
+        child: ListView.builder(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(16),
+          itemCount: _messages.length,
+          itemBuilder: (_, i) => _bubble(_messages[i]),
+        ),
+      );
 
   Widget _buildConfirmBar() => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-    color: Colors.white,
-    child: Row(children: [
-      Expanded(child: OutlinedButton.icon(
-        onPressed: () => _handleConfirmation(false),
-        icon: const Icon(Icons.close, size: 18), label: const Text('Cancel'),
-        style: OutlinedButton.styleFrom(foregroundColor: Colors.red,
-            side: const BorderSide(color: Colors.red),
-            padding: const EdgeInsets.symmetric(vertical: 12)),
-      )),
-      const SizedBox(width: 12),
-      Expanded(child: ElevatedButton.icon(
-        onPressed: () => _handleConfirmation(true),
-        icon: const Icon(Icons.check, size: 18), label: const Text('Confirm'),
-        style: ElevatedButton.styleFrom(backgroundColor: widget.primaryColor,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 12)),
-      )),
-    ]),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: Colors.white,
+        child: Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _handleConfirmation(false),
+              icon: const Icon(Icons.close, size: 18),
+              label: const Text('Cancel'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: () => _handleConfirmation(true),
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('Confirm'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: widget.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ]),
+      );
 
   Widget _buildRecordingBar() => Container(
-    padding: const EdgeInsets.symmetric(vertical: 12),
-    color: Colors.red.withOpacity(0.05),
-    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Container(width: 12, height: 12,
-          decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
-      const SizedBox(width: 8),
-      const Text('Recording... Tap mic to stop',
-          style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500)),
-    ]),
-  );
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        color: Colors.red.withValues(alpha: 0.05),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          const Text(
+            'Recording... Tap mic to stop',
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
+          ),
+        ]),
+      );
 
   Widget _buildInput() => Container(
-    padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-    decoration: BoxDecoration(color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05),
-            blurRadius: 4, offset: const Offset(0, -2))]),
-    child: SafeArea(
-      top: false,
-      child: Row(children: [
-        GestureDetector(
-          onTap: _isLoading ? null : _toggleRecording,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 48, height: 48,
-            decoration: BoxDecoration(
-              color: _isRecording ? Colors.red : widget.primaryColor.withOpacity(0.1),
-              shape: BoxShape.circle,
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 4,
+              offset: const Offset(0, -2),
             ),
-            child: Icon(_isRecording ? Icons.stop : Icons.mic,
-                color: _isRecording ? Colors.white : widget.primaryColor, size: 24),
-          ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Expanded(child: TextField(
-          controller: _textController,
-          decoration: InputDecoration(
-            hintText: 'Type or tap mic to speak...',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24),
-                borderSide: BorderSide.none),
-            filled: true, fillColor: const Color(0xFFF0F0F0),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          ),
-          textInputAction: TextInputAction.send,
-          onSubmitted: (_) => _sendTextMessage(),
-          enabled: !_isLoading && !_isRecording,
-        )),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: _isLoading || _isRecording ? null : _sendTextMessage,
-          child: Container(
-            width: 48, height: 48,
-            decoration: BoxDecoration(color: widget.primaryColor, shape: BoxShape.circle),
-            child: _isLoading
-                ? const Padding(padding: EdgeInsets.all(12),
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.send, color: Colors.white, size: 20),
-          ),
+        child: SafeArea(
+          top: false,
+          child: Row(children: [
+            GestureDetector(
+              onTap: _isLoading ? null : _toggleRecording,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: _isRecording
+                      ? Colors.red
+                      : widget.primaryColor.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _isRecording ? Icons.stop : Icons.mic,
+                  color: _isRecording ? Colors.white : widget.primaryColor,
+                  size: 24,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _textController,
+                style: const TextStyle(color: Colors.black87),
+                decoration: InputDecoration(
+                  hintText: 'Type or tap mic to speak...',
+                  hintStyle: TextStyle(color: Colors.black38),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF0F0F0),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _sendTextMessage(),
+                enabled: !_isLoading && !_isRecording,
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _isLoading || _isRecording ? null : _sendTextMessage,
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: widget.primaryColor,
+                  shape: BoxShape.circle,
+                ),
+                child: _isLoading
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.send, color: Colors.white, size: 20),
+              ),
+            ),
+          ]),
         ),
-      ]),
-    ),
-  );
+      );
 
   Widget _bubble(ChatMessage msg) {
     final isUser = msg.sender == MessageSender.user;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (!isUser) Container(
-            width: 28, height: 28, margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(color: widget.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(14)),
-            child: Icon(Icons.smart_toy, color: widget.primaryColor, size: 16),
-          ),
-          Flexible(child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isUser ? widget.primaryColor : Colors.white,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16), topRight: const Radius.circular(16),
-                bottomLeft: Radius.circular(isUser ? 16 : 4),
-                bottomRight: Radius.circular(isUser ? 4 : 16),
+          if (!isUser)
+            Container(
+              width: 28,
+              height: 28,
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: widget.primaryColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
               ),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04),
-                  blurRadius: 4, offset: const Offset(0, 2))],
+              child:
+                  Icon(Icons.smart_toy, color: widget.primaryColor, size: 16),
             ),
-            child: Text(msg.content,
-                style: TextStyle(color: isUser ? Colors.white : Colors.black87, fontSize: 15)),
-          )),
+          Flexible(
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isUser ? widget.primaryColor : Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(isUser ? 16 : 4),
+                  bottomRight: Radius.circular(isUser ? 4 : 16),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Text(
+                msg.content,
+                style: TextStyle(
+                  color: isUser ? Colors.white : Colors.black87,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
