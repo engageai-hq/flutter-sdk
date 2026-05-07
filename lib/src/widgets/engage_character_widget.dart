@@ -120,7 +120,10 @@ class _EngageCharacterWidgetState extends State<EngageCharacterWidget> {
           _riveController = controller;
           _loading = false;
         });
-        WidgetsBinding.instance.addPostFrameCallback((_) => _applyState(widget.state));
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          await Future.delayed(const Duration(milliseconds: 80));
+          if (mounted) _applyState(widget.state);
+        });
       }
     } catch (e, stack) {
       debugPrint('[EngageAI] Rive load error: $e\n$stack');
@@ -131,28 +134,30 @@ class _EngageCharacterWidgetState extends State<EngageCharacterWidget> {
   void _setInput(String name, bool value) {
     // ignore: deprecated_member_use
     _stateMachine?.boolean(name)?.value = value;
-    _riveController?.scheduleRepaint();
   }
 
   void _applyState(CharacterState state) {
+    // Reset all inputs first to guarantee a clean slate before activating
+    _setInput('isTalking', false);
+    _setInput('isListening', false);
+
     switch (state) {
       case CharacterState.listening:
       case CharacterState.thinking:
       case CharacterState.waitingConfirmation:
-        _setInput('isTalking', false);
         _setInput('isListening', true);
 
       case CharacterState.talking:
-        _setInput('isListening', false);
         _setInput('isTalking', true);
 
       case CharacterState.idle:
       case CharacterState.celebrating:
       case CharacterState.error:
-        _setInput('isTalking', false);
-        _setInput('isListening', false);
+        break;
     }
 
+    // Single repaint after all inputs are committed
+    _riveController?.scheduleRepaint();
     debugPrint('[EngageAI] State: $state');
   }
 

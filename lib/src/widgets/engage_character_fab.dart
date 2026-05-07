@@ -217,8 +217,13 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _ringCtrl;
   final EngageAudioService _audio = EngageAudioService();
+
   bool _isSpeaking = false;
+  bool _isRecording = false;
+  bool _isLoadingResponse = false;
   bool _textVisible = false;
+  CharacterState _characterState = CharacterState.idle;
+  String? _responseText;
 
   @override
   void initState() {
@@ -229,7 +234,6 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
     )..repeat();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Slight delay so the overlay fade-in finishes first
       await Future.delayed(const Duration(milliseconds: 300));
       if (mounted) setState(() => _textVisible = true);
       _playWelcome();
@@ -239,24 +243,84 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
   Future<void> _playWelcome() async {
     if (widget.voiceService == null) return;
     try {
-      setState(() => _isSpeaking = true);
-      final bytes =
-          await widget.voiceService!.synthesizeSpeech(widget.welcomeMessage);
-      if (mounted && bytes.isNotEmpty) {
-        await _audio.playAudioBytes(bytes);
-      }
+      setState(() { _isSpeaking = true; _characterState = CharacterState.talking; });
+      final bytes = await widget.voiceService!.synthesizeSpeech(widget.welcomeMessage);
+      if (mounted && bytes.isNotEmpty) await _audio.playAudioBytes(bytes);
     } catch (_) {
     } finally {
-      if (mounted) setState(() => _isSpeaking = false);
+      if (mounted) setState(() { _isSpeaking = false; _characterState = CharacterState.idle; });
+    }
+  }
+
+  Future<void> _startRecording() async {
+    if (widget.voiceService == null) return;
+    await _audio.stopPlayback();
+    if (mounted) setState(() { _isSpeaking = false; });
+
+    final ok = await _audio.hasPermission();
+    if (!ok || !mounted) return;
+
+    final started = await _audio.startRecording();
+    if (started && mounted) {
+      setState(() {
+        _isRecording = true;
+        _characterState = CharacterState.listening;
+      });
+    }
+  }
+
+  Future<void> _stopAndProcess() async {
+    if (!_isRecording) return;
+    setState(() { _isRecording = false; _characterState = CharacterState.thinking; });
+
+    try {
+      final audioBytes = await _audio.stopRecording();
+      if (audioBytes == null || audioBytes.isEmpty) {
+        if (mounted) setState(() => _characterState = CharacterState.idle);
+        return;
+      }
+
+      if (widget.voiceService == null) return;
+
+      if (mounted) setState(() => _isLoadingResponse = true);
+      final transcription = await widget.voiceService!.transcribeAudio(audioBytes);
+
+      if (transcription.isEmpty) {
+        if (mounted) setState(() { _isLoadingResponse = false; _characterState = CharacterState.idle; });
+        return;
+      }
+
+      final action = await widget.engageAI.sendMessage(transcription);
+
+      if (mounted) setState(() {
+        _isLoadingResponse = false;
+        if (action.message != null && action.message!.isNotEmpty) {
+          _responseText = action.message;
+        }
+      });
+
+      if (action.message != null && action.message!.isNotEmpty) {
+        final bytes = await widget.voiceService!.synthesizeSpeech(action.message!);
+        if (mounted && bytes.isNotEmpty) {
+          setState(() { _isSpeaking = true; _characterState = CharacterState.talking; });
+          await _audio.playAudioBytes(bytes);
+        }
+      }
+
+      if (mounted) setState(() { _isSpeaking = false; _characterState = CharacterState.idle; });
+    } catch (_) {
+      if (mounted) setState(() { _isLoadingResponse = false; _characterState = CharacterState.idle; });
     }
   }
 
   void _dismiss() {
+    if (_isRecording) _audio.stopRecording();
     _audio.stopPlayback();
     Navigator.of(context).pop();
   }
 
   void _openChat() {
+    if (_isRecording) _audio.stopRecording();
     _audio.stopPlayback();
     Navigator.of(context).pop();
     widget.onOpenChat();
@@ -271,9 +335,10 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
 
   @override
   Widget build(BuildContext context) {
+    final displayText = _responseText ?? widget.welcomeMessage;
+
     return GestureDetector(
       onTap: _dismiss,
-      onLongPress: _openChat,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: Stack(
@@ -282,9 +347,7 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
             Positioned.fill(
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Container(
-                  color: Colors.black.withValues(alpha: 0.65),
-                ),
+                child: Container(color: Colors.black.withValues(alpha: 0.65)),
               ),
             ),
 
@@ -317,7 +380,7 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
               ),
             ),
 
-            // Character + text
+            // Character + text + controls
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -343,12 +406,9 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
                         maxWidth: 160 * 2.8,
                         maxHeight: 160 * 2.8,
                         child: EngageCharacterWidget(
-                          state: _isSpeaking
-                              ? CharacterState.talking
-                              : CharacterState.idle,
+                          state: _characterState,
                           emotion: CharacterEmotion.happy,
-                          config: const CharacterConfig(
-                              size: 160 * 2.8, showShadow: false),
+                          config: const CharacterConfig(size: 160 * 2.8, showShadow: false),
                           isSpeaking: _isSpeaking,
                           characterUrl: widget.characterUrl,
                           apiKey: widget.apiKey,
@@ -357,16 +417,16 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
                     ),
                   ),
 
-                  const SizedBox(height: 36),
+                  const SizedBox(height: 32),
 
-                  // Welcome message
+                  // Message text (welcome or AI response)
                   AnimatedOpacity(
                     opacity: _textVisible ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 500),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 48),
                       child: Text(
-                        widget.welcomeMessage,
+                        displayText,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Colors.white,
@@ -378,46 +438,120 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
                     ),
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 28),
 
+                  // Controls
                   AnimatedOpacity(
                     opacity: _textVisible ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 600),
                     child: Column(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.2),
+                        if (widget.voiceService != null) ...[
+                          // Press-and-hold mic button
+                          GestureDetector(
+                            onTap: () {}, // absorb so overlay doesn't dismiss
+                            onLongPressStart: (_isLoadingResponse || _isRecording)
+                                ? null
+                                : (_) => _startRecording(),
+                            onLongPressEnd: (_) => _stopAndProcess(),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: 72,
+                              height: 72,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _isRecording ? Colors.red : widget.primaryColor,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (_isRecording ? Colors.red : widget.primaryColor)
+                                        .withValues(alpha: 0.55),
+                                    blurRadius: _isRecording ? 28 : 20,
+                                    spreadRadius: _isRecording ? 5 : 2,
+                                  ),
+                                ],
+                              ),
+                              child: _isLoadingResponse
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(20),
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2.5, color: Colors.white),
+                                    )
+                                  : Icon(
+                                      _isRecording ? Icons.stop_rounded : Icons.mic,
+                                      color: Colors.white,
+                                      size: 32,
+                                    ),
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.chat_bubble_outline,
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                  size: 14),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Hold to open chat',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                          const SizedBox(height: 10),
+                          Text(
+                            _isRecording
+                                ? 'Release to send'
+                                : _isLoadingResponse
+                                    ? 'Processing...'
+                                    : 'Hold to speak',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ] else ...[
+                          // No voice service — fall back to open chat
+                          GestureDetector(
+                            onTap: _openChat,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                              decoration: BoxDecoration(
+                                color: widget.primaryColor,
+                                borderRadius: BorderRadius.circular(32),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: widget.primaryColor.withValues(alpha: 0.5),
+                                    blurRadius: 20,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
                               ),
-                            ],
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.chat_bubble_outline, color: Colors.white, size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Ask me anything',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 20),
+
+                        // Secondary: open full chat
+                        GestureDetector(
+                          onTap: _openChat,
+                          child: Text(
+                            'Open full chat →',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.45),
+                              fontSize: 13,
+                              decoration: TextDecoration.underline,
+                              decorationColor: Colors.white.withValues(alpha: 0.25),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 10),
+
+                        const SizedBox(height: 8),
                         Text(
                           'Tap anywhere to dismiss',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.4),
+                            color: Colors.white.withValues(alpha: 0.3),
                             fontSize: 12,
                           ),
                         ),

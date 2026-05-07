@@ -203,14 +203,6 @@ class _State extends State<EngageAIVoiceChatWidget> {
     await _processMessage(text);
   }
 
-  Future<void> _toggleRecording() async {
-    if (_isRecording) {
-      await _stopAndProcess();
-    } else {
-      await _startRecording();
-    }
-  }
-
   Future<void> _startRecording() async {
     await _interrupt();
 
@@ -510,7 +502,7 @@ class _State extends State<EngageAIVoiceChatWidget> {
           ),
           const SizedBox(width: 8),
           const Text(
-            'Recording... Tap mic to stop',
+            'Recording... Release to send',
             style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
           ),
         ]),
@@ -532,7 +524,11 @@ class _State extends State<EngageAIVoiceChatWidget> {
           top: false,
           child: Row(children: [
             GestureDetector(
-              onTap: _isLoading ? null : _toggleRecording,
+              onTap: () {}, // absorb taps to prevent accidental nav
+              onLongPressStart: _isLoading
+                  ? null
+                  : (_) { if (!_isRecording) _startRecording(); },
+              onLongPressEnd: (_) { if (_isRecording) _stopAndProcess(); },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 width: 48,
@@ -544,7 +540,7 @@ class _State extends State<EngageAIVoiceChatWidget> {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  _isRecording ? Icons.stop : Icons.mic,
+                  _isRecording ? Icons.stop_rounded : Icons.mic,
                   color: _isRecording ? Colors.white : widget.primaryColor,
                   size: 24,
                 ),
@@ -556,7 +552,7 @@ class _State extends State<EngageAIVoiceChatWidget> {
                 controller: _textController,
                 style: const TextStyle(color: Colors.black87),
                 decoration: InputDecoration(
-                  hintText: 'Type or tap mic to speak...',
+                  hintText: 'Type or hold mic to speak...',
                   hintStyle: TextStyle(color: Colors.black38),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
