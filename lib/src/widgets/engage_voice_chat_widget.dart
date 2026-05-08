@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import '../core/engageai.dart';
 import '../models/agent_action.dart';
 import '../models/chat_message.dart';
@@ -48,6 +48,7 @@ class _State extends State<EngageAIVoiceChatWidget> {
   bool _isSpeaking = false;
   bool _awaitingConfirmation = false;
   bool _isFetchingAudio = false;
+  bool _micPointerDown = false; // tracks physical press to beat the async race
   CharacterState _characterState = CharacterState.idle;
   CharacterEmotion _characterEmotion = CharacterEmotion.happy;
 
@@ -213,11 +214,14 @@ class _State extends State<EngageAIVoiceChatWidget> {
     }
     final started = await _audioService.startRecording();
     if (started) {
+      HapticFeedback.mediumImpact();
       setState(() {
         _isRecording = true;
         _characterState = CharacterState.listening;
         _characterEmotion = CharacterEmotion.happy;
       });
+      // Race: user released before startRecording() finished
+      if (!_micPointerDown) _stopAndProcess();
     }
   }
 
@@ -524,9 +528,18 @@ class _State extends State<EngageAIVoiceChatWidget> {
           top: false,
           child: Row(children: [
             Listener(
-              onPointerDown: _isLoading ? null : (_) => _startRecording(),
-              onPointerUp: (_) { if (_isRecording) _stopAndProcess(); },
-              onPointerCancel: (_) { if (_isRecording) _stopAndProcess(); },
+              onPointerDown: _isLoading ? null : (_) {
+                _micPointerDown = true;
+                _startRecording();
+              },
+              onPointerUp: (_) {
+                _micPointerDown = false;
+                if (_isRecording) _stopAndProcess();
+              },
+              onPointerCancel: (_) {
+                _micPointerDown = false;
+                if (_isRecording) _stopAndProcess();
+              },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 width: 48,
