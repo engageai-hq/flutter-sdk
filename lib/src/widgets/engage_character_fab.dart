@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import '../core/engageai.dart';
 import '../services/voice_service.dart';
 import '../services/audio_service.dart';
@@ -221,6 +222,7 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
   bool _isSpeaking = false;
   bool _isRecording = false;
   bool _isLoadingResponse = false;
+  bool _micPointerDown = false;
   bool _textVisible = false;
   CharacterState _characterState = CharacterState.idle;
   String? _responseText;
@@ -262,10 +264,13 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
 
     final started = await _audio.startRecording();
     if (started && mounted) {
+      HapticFeedback.mediumImpact();
       setState(() {
         _isRecording = true;
         _characterState = CharacterState.listening;
       });
+      // Race: user released before startRecording() finished
+      if (!_micPointerDown) _stopAndProcess();
     }
   }
 
@@ -448,12 +453,25 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
                       children: [
                         if (widget.voiceService != null) ...[
                           // Press-and-hold mic button
-                          Listener(
+                          // GestureDetector absorbs the tap so the outer
+                          // onTap:_dismiss doesn't fire on pointer release
+                          GestureDetector(
+                            onTap: () {},
+                            child: Listener(
                             onPointerDown: (_isLoadingResponse || _isRecording)
                                 ? null
-                                : (_) => _startRecording(),
-                            onPointerUp: (_) => _stopAndProcess(),
-                            onPointerCancel: (_) => _stopAndProcess(),
+                                : (_) {
+                                    _micPointerDown = true;
+                                    _startRecording();
+                                  },
+                            onPointerUp: (_) {
+                              _micPointerDown = false;
+                              _stopAndProcess();
+                            },
+                            onPointerCancel: (_) {
+                              _micPointerDown = false;
+                              _stopAndProcess();
+                            },
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
                               width: 72,
@@ -482,7 +500,8 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
                                       size: 32,
                                     ),
                             ),
-                          ),
+                          ), // Listener
+                          ), // GestureDetector
                           const SizedBox(height: 10),
                           Text(
                             _isRecording
