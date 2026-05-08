@@ -523,12 +523,10 @@ class _State extends State<EngageAIVoiceChatWidget> {
         child: SafeArea(
           top: false,
           child: Row(children: [
-            GestureDetector(
-              onTap: () {}, // absorb taps to prevent accidental nav
-              onLongPressStart: _isLoading
-                  ? null
-                  : (_) { if (!_isRecording) _startRecording(); },
-              onLongPressEnd: (_) { if (_isRecording) _stopAndProcess(); },
+            Listener(
+              onPointerDown: _isLoading ? null : (_) => _startRecording(),
+              onPointerUp: (_) { if (_isRecording) _stopAndProcess(); },
+              onPointerCancel: (_) { if (_isRecording) _stopAndProcess(); },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 width: 48,

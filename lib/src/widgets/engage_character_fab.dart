@@ -448,12 +448,12 @@ class _DreamyOverlayPageState extends State<_DreamyOverlayPage>
                       children: [
                         if (widget.voiceService != null) ...[
                           // Press-and-hold mic button
-                          GestureDetector(
-                            onTap: () {}, // absorb so overlay doesn't dismiss
-                            onLongPressStart: (_isLoadingResponse || _isRecording)
+                          Listener(
+                            onPointerDown: (_isLoadingResponse || _isRecording)
                                 ? null
                                 : (_) => _startRecording(),
-                            onLongPressEnd: (_) => _stopAndProcess(),
+                            onPointerUp: (_) => _stopAndProcess(),
+                            onPointerCancel: (_) => _stopAndProcess(),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
                               width: 72,
